@@ -24,5 +24,9 @@
   "travelanchors.lock.button": "Lock",
   "travelanchors.lock.locked": "This anchor is now locked.",
   "travelanchors.lock.unlocked": "This anchor is no longer locked.",
-  "travelanchors.lock.interact": "This anchor is locked. Right-click with a stick to unlock."
+  "travelanchors.lock.interact": "This anchor is locked. Right-click with a stick to unlock.",
+
+  "key.categories.travelanchors": "Travel Anchors",
+  "key.travelanchors.invert_velocity": "Toggle Keep Velocity after Short-Range Teleport",
+  "key.travelanchors.short_teleport": "Short-Range Teleport"
 }

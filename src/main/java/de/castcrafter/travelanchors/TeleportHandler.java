@@ -1,13 +1,17 @@
 package de.castcrafter.travelanchors;
 
+import de.castcrafter.travelanchors.TravelAnchors;
+import de.castcrafter.travelanchors.config.ClientConfig;
 import de.castcrafter.travelanchors.config.CommonConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.TickTask;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -54,6 +58,8 @@ public class TeleportHandler {
         }
     }
     
+    // ctrlPressed parameter removed, will only use global config
+    // ctrlPressed parameter removed, will only use global config
     public static boolean teleportPlayer(Player player, @Nullable Pair<BlockPos, String> anchor, @Nullable InteractionHand hand) {
         if (anchor != null) {
             if (!player.level().isClientSide) {
@@ -63,7 +69,15 @@ public class TeleportHandler {
                 }
                 player.teleportTo(teleportVec.x(), teleportVec.y(), teleportVec.z());
             }
-            player.fallDistance = 0;
+            player.fallDistance = 0; // Reset fall distance regardless of velocity setting
+
+            if (player.getServer() != null) {
+                player.getServer().tell(new TickTask(player.getServer().getTickCount() + 1, () -> {
+                    if (player.isAlive()) {
+                    }
+                }));
+            }
+
             if (hand != null) {
                 player.swing(hand, true);
             }
@@ -80,39 +94,178 @@ public class TeleportHandler {
         }
     }
 
-    public static boolean shortTeleport(Level level, Player player, InteractionHand hand) {
-        Vec3 targetVec = player.position().add(0, player.getEyeHeight(), 0);
-        Vec3 lookVec = player.getLookAngle();
-        BlockPos target = null;
-        for (double i = CommonConfig.max_short_tp_distance; i >= 2; i -= 0.5) {
-            Vec3 v3d = targetVec.add(lookVec.multiply(i, i, i));
-            target = new BlockPos((int) Math.round(v3d.x), (int) Math.round(v3d.y), (int) Math.round(v3d.z));
-            if (canTeleportTo(level, target.below())) { //to use the same check as the anchors use the position below
-                break;
-            } else {
-                target = null;
+    private static final double MIN_TELEPORT_DISTANCE = 2.0;
+    private static final double TELEPORT_STEP_BACK = 0.5;
+
+    public static boolean requestShortTeleport(Level level, Player player) {
+        if (!level.isClientSide) {
+            TravelAnchors.logger.warn("requestShortTeleport called on server side. This should not happen. Packet should be used.");
+            return false;
+        }
+
+        InteractionHand hand = player.getItemInHand(InteractionHand.MAIN_HAND).isEmpty() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        ItemStack itemStack = player.getItemInHand(hand);
+        if (TeleportHandler.canPlayerTeleport(player, hand)) {
+            if (TeleportHandler.canItemTeleport(player, hand) && !player.getCooldowns().isOnCooldown(itemStack.getItem())) {
+                boolean invertVelocity = Keybinds.INVERT_VELOCITY_KEY.isDown();
+                if (TeleportHandler.shortTeleport(level, player, hand, invertVelocity)) {
+                    player.getCooldowns().addCooldown(itemStack.getItem(), 30);
+                    return true;
+                }
             }
         }
-        if (target != null) {
-            if (!player.level().isClientSide) {
-                Vec3 teleportVec = checkTeleport(player, target);
-                if (teleportVec == null) {
-                    return false;
-                }
-                player.teleportTo(teleportVec.x(), teleportVec.y(), teleportVec.z());
+        return false;
+    }
+
+    
+    public static boolean shortTeleport(Level level, Player player, InteractionHand hand, boolean invertVelocity) {
+        if (!level.isClientSide) {
+            TravelAnchors.logger.warn("shortTeleport called on server side. This should not happen. Packet should be used.");
+            return false;
+        }
+
+        boolean clientShouldKeepVelocity = ClientConfig.keepVelocityOnTeleport;
+        if (invertVelocity) {
+            clientShouldKeepVelocity = !clientShouldKeepVelocity;
+        }
+
+        Vec3 lookVec = player.getLookAngle();
+        Vec3 playerPos = player.position();
+        Vec3 targetSpot = null;
+        for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
+            Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+            Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+            if (potentialSpot != null) {
+                targetSpot = potentialSpot;
+                break;
             }
-            player.fallDistance = 0;
+        }
+
+        if (targetSpot != null) {
+            TravelAnchors.getNetwork().sendShortTeleportRequest(level, hand, clientShouldKeepVelocity);
             player.swing(hand, true);
             player.playNotifySound(SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1F, 1F);
             return true;
         } else {
-            if (!player.level().isClientSide) {
-                player.displayClientMessage(Component.translatable("travelanchors.hop.fail"), true);
-            }
             return false;
         }
     }
 
+    public static boolean performShortTeleportOnServer(Level level, Player player, InteractionHand hand, boolean keepVelocityDecision) {
+        if (level.isClientSide) {
+            return false;
+        }
+
+        Vec3 lookVec = player.getLookAngle();
+        Vec3 playerPos = player.position(); // Player's feet position
+
+        Vec3 finalTeleportVec = null;
+
+        for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
+            Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+            Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+            if (potentialSpot != null) {
+                finalTeleportVec = potentialSpot;
+                break; // Found a valid spot
+            }
+        }
+
+        if (finalTeleportVec != null) {
+            Vec3 velocityBefore = player.getDeltaMovement();
+            Vec3 oldVelocityToRestore = velocityBefore;
+            
+            player.teleportTo(finalTeleportVec.x(), finalTeleportVec.y(), finalTeleportVec.z());
+            player.fallDistance = 0;
+
+            if (player.getServer() != null) {
+                final Vec3 finalOldVelocityToRestore = oldVelocityToRestore;
+                if (keepVelocityDecision) {
+                    player.setDeltaMovement(finalOldVelocityToRestore);
+                } else {
+                    player.setDeltaMovement(Vec3.ZERO);
+                }
+                player.hurtMarked = true; // Tell client to update velocity
+            }
+            return true;
+        } else {
+            player.displayClientMessage(Component.translatable("travelanchors.hop.fail"), true);
+            return false;
+        }
+    }
+    
+    @Nullable
+    private static Vec3 getValidTeleportSpotForCandidate(Level level, Player player, Vec3 candidateFeetPos) {
+        double playerHeight = player.getBbHeight();
+        double playerWidth = player.getBbWidth();
+
+        // Step 1: Check if player can occupy the candidateFeetPos (feet and head space are non-solid)
+        BlockPos feetBlockPos = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y, candidateFeetPos.z);
+        BlockPos headBlockPos = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y + playerHeight - 0.01, candidateFeetPos.z); // Check just below top of BB
+
+        BlockState feetBlockState = level.getBlockState(feetBlockPos);
+        BlockState headBlockState = level.getBlockState(headBlockPos);
+
+        // Player must be in air or fluid at feet and head level
+        if (!feetBlockState.getCollisionShape(level, feetBlockPos).isEmpty() || !headBlockState.getCollisionShape(level, headBlockPos).isEmpty()) {
+            return null; // Cannot occupy this space directly
+        }
+
+        // Step 2: Apply .5 Snapping for X/Z Axes (Wall Avoidance)
+        double snappedX = candidateFeetPos.x;
+        double snappedZ = candidateFeetPos.z;
+
+        // X-axis snapping
+        BlockPos xCheckBlock = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y + playerHeight / 2, candidateFeetPos.z);
+        BlockState xCheckBlockState = level.getBlockState(xCheckBlock);
+        if (!xCheckBlockState.getCollisionShape(level, xCheckBlock).isEmpty()) { // If block at player's X-center is solid
+            if (candidateFeetPos.x >= xCheckBlock.getX() && candidateFeetPos.x < xCheckBlock.getX() + 1) {
+                snappedX = xCheckBlock.getX() + 0.5;
+            }
+        }
+
+        // Z-axis snapping
+        BlockPos zCheckBlock = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y + playerHeight / 2, candidateFeetPos.z);
+        BlockState zCheckBlockState = level.getBlockState(zCheckBlock);
+        if (!zCheckBlockState.getCollisionShape(level, zCheckBlock).isEmpty()) { // If block at player's Z-center is solid
+            if (candidateFeetPos.z >= zCheckBlock.getZ() && candidateFeetPos.z < zCheckBlock.getZ() + 1) {
+                snappedZ = zCheckBlock.getZ() + 0.5;
+            }
+        }
+        
+        Vec3 currentAdjustedPos = new Vec3(snappedX, candidateFeetPos.y, snappedZ);
+
+        // Step 3: Final Standable & Collision Check
+        if (currentAdjustedPos.y < level.getMinBuildHeight() + 1) { // Need at least 1 block for ground + player height
+            return null;
+        }
+
+        BlockPos blockBelowFeet = BlockPos.containing(currentAdjustedPos.x, currentAdjustedPos.y - 0.01, currentAdjustedPos.z);
+        if (!canTeleportTo(level, blockBelowFeet)) { // Checks for solid ground and clear head/body space above it
+            return null;
+        }
+        
+        // Final AABB collision check at the (potentially snapped) position
+        net.minecraft.world.phys.AABB finalPlayerAABB = new net.minecraft.world.phys.AABB(
+            currentAdjustedPos.x - playerWidth / 2, currentAdjustedPos.y, currentAdjustedPos.z - playerWidth / 2,
+            currentAdjustedPos.x + playerWidth / 2, currentAdjustedPos.y + playerHeight, currentAdjustedPos.z + playerWidth / 2
+        );
+
+        if (!level.noCollision(player, finalPlayerAABB)) {
+            return null;
+        }
+
+        // Step 4: Event Firing
+        if (CommonConfig.fireTeleportEvent) {
+            EntityTeleportEvent event = new EntityTeleportEvent(player, currentAdjustedPos.x, currentAdjustedPos.y, currentAdjustedPos.z);
+            if (MinecraftForge.EVENT_BUS.post(event)) {
+                return null;
+            }
+            return new Vec3(event.getTargetX(), event.getTargetY(), event.getTargetZ());
+        } else {
+            return currentAdjustedPos;
+        }
+    }
+    
     public static boolean canTeleportTo(BlockGetter level, BlockPos target) {
         return !level.getBlockState(target.immutable().above(1)).canOcclude()
                 && !level.getBlockState(target.immutable().above(2)).canOcclude()

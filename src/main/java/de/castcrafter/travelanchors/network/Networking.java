@@ -29,6 +29,7 @@ public class Networking extends NetworkX {
         this.registerGame(NetworkDirection.PLAY_TO_SERVER, new AnchorLockMessage.Serializer(), () -> AnchorLockMessage.Handler::new);
         this.registerGame(NetworkDirection.PLAY_TO_CLIENT, new AnchorListUpdateMessage.Serializer(), () -> AnchorListUpdateMessage.Handler::new);
         this.registerGame(NetworkDirection.PLAY_TO_SERVER, new ClientEventMessage.Serializer(), () -> ClientEventMessage.Handler::new);
+        this.registerGame(NetworkDirection.PLAY_TO_SERVER, new ShortTeleportPacket.Serializer(), () -> ShortTeleportPacket.Handler::new);
     }
 
     public void sendNameChange(Level level, BlockPos pos, String name) {
@@ -61,6 +62,12 @@ public class Networking extends NetworkX {
     public void sendClientEventToServer(Level level, ClientEventMessage.Type type) {
         if (level.isClientSide) {
             this.channel.sendToServer(new ClientEventMessage(type));
+        }
+    }
+
+    public void sendShortTeleportRequest(Level level, net.minecraft.world.InteractionHand hand, boolean keepVelocity) {
+        if (level.isClientSide) {
+            this.channel.sendToServer(new ShortTeleportPacket(hand, keepVelocity));
         }
     }
 }

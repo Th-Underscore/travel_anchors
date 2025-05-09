@@ -1,19 +1,27 @@
 package de.castcrafter.travelanchors;
 
+import de.castcrafter.travelanchors.TravelAnchors;
+
 import de.castcrafter.travelanchors.config.ClientConfig;
 import de.castcrafter.travelanchors.network.ClientEventMessage;
+import de.castcrafter.travelanchors.network.ShortTeleportPacket;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.MovementInputUpdateEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+
+import org.lwjgl.glfw.GLFW;
 import org.moddingx.libx.event.InteractBlockEmptyHandEvent;
 
 public class EventListener {
@@ -34,10 +42,13 @@ public class EventListener {
         Player player = event.getEntity();
         if (TeleportHandler.canPlayerTeleport(player, event.getHand()) && !event.getItemStack().isEmpty()) {
             if (player.isShiftKeyDown() && TeleportHandler.canItemTeleport(player, event.getHand())) {
-                if (TeleportHandler.shortTeleport(level, player, event.getHand())) {
-                    event.setCanceled(true);
-                    event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
-                    player.getCooldowns().addCooldown(event.getItemStack().getItem(), 30);
+                if (level.isClientSide) {
+                    boolean invertVelocity = Keybinds.INVERT_VELOCITY_KEY.isDown();
+                    if (TeleportHandler.shortTeleport(level, player, event.getHand(), invertVelocity)) {
+                        event.setCanceled(true);
+                        event.setCancellationResult(InteractionResult.sidedSuccess(true));
+                        player.getCooldowns().addCooldown(event.getItemStack().getItem(), 30);
+                    }
                 }
             } else {
                 if (TeleportHandler.anchorTeleport(level, player, player.blockPosition().immutable().below(), event.getHand())) {
@@ -61,8 +72,6 @@ public class EventListener {
     @SubscribeEvent
     public void emptyBlockClick(InteractBlockEmptyHandEvent event) {
         if (event.getHand() == InteractionHand.MAIN_HAND) {
-            // Empty offhand does not count. In that case the main hand will either produce
-            // this event or PlayerInteractEvent.RightClickItem
             if (TeleportHandler.canPlayerTeleport(event.getPlayer(), event.getHand())) {
                 if (!event.getPlayer().isShiftKeyDown()) {
                     if (TeleportHandler.anchorTeleport(event.getLevel(), event.getPlayer(), event.getPlayer().blockPosition().immutable().below(), event.getHand())) {
@@ -97,6 +106,42 @@ public class EventListener {
             if (!ClientConfig.disable_elevation) {
                 if (TeleportHandler.canElevate(Minecraft.getInstance().player)) {
                     TravelAnchors.getNetwork().sendClientEventToServer(Minecraft.getInstance().player.getCommandSenderWorld(), ClientEventMessage.Type.SNEAK);
+                }
+            }
+        }
+    }
+
+    @SubscribeEvent
+    @OnlyIn(Dist.CLIENT)
+    public void onKeyInput(InputEvent.Key event) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null || mc.screen != null) {
+            return;
+        }
+        if (event.getAction() == GLFW.GLFW_PRESS) {
+            if (Keybinds.SHORT_TELEPORT_KEY.isDown()) {
+                Level level = player.getCommandSenderWorld();
+                if (TeleportHandler.requestShortTeleport(level, player)) {
+                    // event.setCanceled(true);
+                }
+            }
+        }
+    }
+
+    @SubscribeEvent
+    @OnlyIn(Dist.CLIENT)
+    public void onMouseInput(InputEvent.MouseButton event) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null || mc.screen != null) {
+            return;
+        }
+        if (event.getAction() == GLFW.GLFW_PRESS) {
+            if (Keybinds.SHORT_TELEPORT_KEY.isDown()) {
+                Level level = player.getCommandSenderWorld();
+                if (TeleportHandler.requestShortTeleport(level, player)) {
+                    // event.setCanceled(true);
                 }
             }
         }
