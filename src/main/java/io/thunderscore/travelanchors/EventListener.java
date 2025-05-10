@@ -1,7 +1,7 @@
 package io.thunderscore.travelanchors;
 
-import io.thunderscore.travelanchors.config.CommonConfig;
 import io.thunderscore.travelanchors.config.ClientConfig;
+import io.thunderscore.travelanchors.config.ServerConfig;
 import io.thunderscore.travelanchors.network.ClientEventMessage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -43,7 +43,7 @@ public class EventListener {
                     if (TeleportHandler.tryShortTeleport(level, player, event.getHand())) {
                         event.setCanceled(true);
                         event.setCancellationResult(InteractionResult.sidedSuccess(true));
-                        player.getCooldowns().addCooldown(event.getItemStack().getItem(), CommonConfig.short_tp_cooldown);
+                        player.getCooldowns().addCooldown(event.getItemStack().getItem(), ServerConfig.SHORT_TP_COOLDOWN.get());
                     }
                 }
             } else {
@@ -83,7 +83,7 @@ public class EventListener {
     @OnlyIn(Dist.CLIENT)
     public void onJump(LivingEvent.LivingJumpEvent event) {
         if (event.getEntity() instanceof Player player) {
-            if (ClientConfig.disable_elevation) {
+            if (ClientConfig.DISABLE_ELEVATION.get()) {
                 if (TeleportHandler.canBlockTeleport(player) && !player.isShiftKeyDown()) {
                     TravelAnchors.getNetwork().sendClientEventToServer(player.getCommandSenderWorld(), ClientEventMessage.Type.JUMP_TP);
                 }
@@ -99,7 +99,7 @@ public class EventListener {
     @OnlyIn(Dist.CLIENT)
     public void onSneak(MovementInputUpdateEvent event) {
         if (Minecraft.getInstance().player != null && Minecraft.getInstance().options.keyShift.consumeClick()) {
-            if (!ClientConfig.disable_elevation) {
+            if (!ClientConfig.DISABLE_ELEVATION.get()) {
                 if (TeleportHandler.canElevate(Minecraft.getInstance().player)) {
                     TravelAnchors.getNetwork().sendClientEventToServer(Minecraft.getInstance().player.getCommandSenderWorld(), ClientEventMessage.Type.SNEAK);
                 }

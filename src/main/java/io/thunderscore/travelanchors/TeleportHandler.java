@@ -1,8 +1,7 @@
 package io.thunderscore.travelanchors;
 
-import io.thunderscore.travelanchors.TravelAnchors;
 import io.thunderscore.travelanchors.config.ClientConfig;
-import io.thunderscore.travelanchors.config.CommonConfig;
+import io.thunderscore.travelanchors.config.ServerConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -45,7 +44,7 @@ public class TeleportHandler {
             Vec3 positionVec = player.position().add(0, player.getEyeHeight(), 0);
             Optional<Pair<BlockPos, String>> anchor = TravelAnchorList.get(level).getAnchorsAround(player.position(), Math.pow(maxDistance, 2))
                     .filter(pair -> except == null || !except.equals(pair.getLeft()))
-                    .filter(p -> Math.abs(getAngleRadians(positionVec, p.getLeft(), player.getYRot(), player.getXRot())) <= Math.toRadians(CommonConfig.max_angle))
+                    .filter(p -> Math.abs(getAngleRadians(positionVec, p.getLeft(), player.getYRot(), player.getXRot())) <= Math.toRadians(ServerConfig.MAX_ANGLE.get()))
                     .min((p1, p2) -> {
                         double angle1 = getAngleRadians(positionVec, p1.getLeft(), player.getYRot(), player.getXRot());
                         double angle2 = getAngleRadians(positionVec, p2.getLeft(), player.getYRot(), player.getXRot());
@@ -141,7 +140,7 @@ public class TeleportHandler {
             if (!cooldowns.isOnCooldown(itemStack.getItem())) {
                 boolean invertVelocity = Keybinds.INVERT_VELOCITY_KEY.isDown();
                 if (shortTeleport(level, player, hand, invertVelocity)) {
-                    cooldowns.addCooldown(itemStack.getItem(), CommonConfig.short_tp_cooldown);
+                    cooldowns.addCooldown(itemStack.getItem(), ServerConfig.SHORT_TP_COOLDOWN.get());
                     return true;
                 }
             }
@@ -156,7 +155,7 @@ public class TeleportHandler {
             return false;
         }
 
-        boolean clientShouldKeepVelocity = ClientConfig.keepVelocityOnTeleport;
+        boolean clientShouldKeepVelocity = ClientConfig.KEEP_VELOCITY_ON_TELEPORT.get();
         if (invertVelocity) {
             clientShouldKeepVelocity = !clientShouldKeepVelocity;
         }
@@ -237,7 +236,7 @@ public class TeleportHandler {
         if (teleportThroughBlock) {
             // Player is targeting a nearby block. Iterate forwards from MIN_TELEPORT_DISTANCE
             // to find the first valid spot *after* this block.
-            for (double currentDistance = MIN_TELEPORT_DISTANCE; currentDistance <= CommonConfig.max_short_tp_distance; currentDistance += TELEPORT_STEP_BACK) {
+            for (double currentDistance = MIN_TELEPORT_DISTANCE; currentDistance <= ServerConfig.MAX_SHORT_TP_DISTANCE.get(); currentDistance += TELEPORT_STEP_BACK) {
                 Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
                 Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
                 if (potentialSpot != null) {
@@ -248,7 +247,7 @@ public class TeleportHandler {
         } else {
             // No specific nearby block targeted for "teleport through", or target is too far/not solid.
             // Use original backwards iteration to find the furthest valid spot.
-            for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
+            for (double currentDistance = ServerConfig.MAX_SHORT_TP_DISTANCE.get(); currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
                 Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
                 Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
                 if (potentialSpot != null) {
@@ -333,7 +332,7 @@ public class TeleportHandler {
         }
 
         // Step 5: Event Firing
-        if (CommonConfig.fireTeleportEvent) {
+        if (ServerConfig.FIRE_TELEPORT_EVENT.get()) {
             EntityTeleportEvent event = new EntityTeleportEvent(player, currentAdjustedPos.x, currentAdjustedPos.y, currentAdjustedPos.z);
             if (MinecraftForge.EVENT_BUS.post(event)) {
                 return null;
@@ -398,7 +397,7 @@ public class TeleportHandler {
         int mainHandLevel = player.getItemInHand(InteractionHand.MAIN_HAND).getEnchantmentLevel(ModEnchantments.range);
         int offHandLevel = player.getItemInHand(InteractionHand.OFF_HAND).getEnchantmentLevel(ModEnchantments.range);
         int lvl = Math.max(mainHandLevel, offHandLevel);
-        return CommonConfig.max_distance * (1 + (lvl / 2d));
+        return ServerConfig.MAX_DISTANCE.get() * (1 + (lvl / 2d));
     }
     
     public static boolean canElevate(Player player) {
@@ -449,7 +448,7 @@ public class TeleportHandler {
     
     @Nullable
     private static Vec3 checkTeleport(Player player, BlockPos target) {
-        if (CommonConfig.fireTeleportEvent) {
+        if (ServerConfig.FIRE_TELEPORT_EVENT.get()) {
             EntityTeleportEvent event = new EntityTeleportEvent(player, target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
             if (MinecraftForge.EVENT_BUS.post(event)) {
                 return null;

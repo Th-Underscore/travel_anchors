@@ -1,6 +1,6 @@
 package io.thunderscore.travelanchors;
 
-import io.thunderscore.travelanchors.config.CommonConfig;
+import io.thunderscore.travelanchors.config.ServerConfig;
 import io.redspace.ironsspellbooks.api.magic.MagicData;
 import io.redspace.ironsspellbooks.player.ClientMagicData;
 import io.redspace.ironsspellbooks.network.ClientboundSyncMana;
@@ -71,30 +71,30 @@ public class ManaIntegration {
     }
 
     public static boolean canTeleportWithMana(Player player) {
-        if (!CommonConfig.short_tp_mana_cost_enabled || !isModLoaded()) {
+        if (!ServerConfig.SHORT_TP_MANA_COST_ENABLED.get() || !isModLoaded()) {
             return true; // Mana cost not enabled or mod not loaded
         }
         if (!(player instanceof ServerPlayer)) {
            return true;
        }
-        return hasEnoughMana(player, CommonConfig.short_tp_mana_cost_amount);
+        return hasEnoughMana(player, ServerConfig.SHORT_TP_MANA_COST_AMOUNT.get());
     }
 
     public static void tryConsumeMana(Player player) {
-        if (CommonConfig.short_tp_mana_cost_enabled && isModLoaded() && player instanceof ServerPlayer) {
-            consumeMana(player, CommonConfig.short_tp_mana_cost_amount);
+        if (ServerConfig.SHORT_TP_MANA_COST_ENABLED.get() && isModLoaded() && player instanceof ServerPlayer) {
+            consumeMana(player, ServerConfig.SHORT_TP_MANA_COST_AMOUNT.get());
         }
     }
 
     public static boolean clientHasEnoughMana() {
-        if (!CommonConfig.short_tp_mana_cost_enabled || !isModLoaded()) {
+        if (!ServerConfig.SHORT_TP_MANA_COST_ENABLED.get() || !isModLoaded()) {
             return true;
         }
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
             try {
                 float currentMana = ClientMagicData.getPlayerMana();
-                return currentMana >= CommonConfig.short_tp_mana_cost_amount;
+                return currentMana >= ServerConfig.SHORT_TP_MANA_COST_AMOUNT.get();
             } catch (Throwable t) {
                 LOGGER.error("Client-side error checking mana for Iron's Spells 'n Spellbooks: {}. Client UI might not reflect mana accurately.", t.getMessage(), t);
             }
