@@ -1,28 +1,25 @@
 buildscript {
-    apply from: 'https://moddingx.github.io/ModUtils/v5/buildscript.gradle', to: buildscript
+    apply from: 'gradle/buildscript.gradle', to: buildscript
 }
 
-apply from: 'https://moddingx.github.io/ModUtils/v5/mod.gradle'
+apply from: 'gradle/mod.gradle'
 
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
 repositories {
-    maven { url = 'https://maven.melanx.de/' }
+    maven {
+        url = 'https://maven.melanx.de/'
+    }
+    maven {
+        name = "Iron's Maven - Release"
+        url = "https://code.redspace.io/releases"
+    }
 }
 
 dependencies {
-    annotationProcessor fg.deobf("org.moddingx:LibX:1.20.1-5.0.12")
+    annotationProcessor fg.deobf("org.moddingx:LibX:${mod.libx_version}")
 
-    implementation fg.deobf("org.moddingx:LibX:1.20.1-5.0.12")
-}
-
-// Read version (e.g., 1.20.1-1.0.0)
-Matcher matcher = Pattern.compile('(.*)-(.*)').matcher(mod.version)
-
-if (matcher.find()) {
-    project.version = matcher.group(2) + '+' + matcher.group(1)
-    println("Version: " + project.version)
-} else {
-    throw new GradleException("Could not find version for modId 'travelanchors' matching the expected format.")
+    implementation fg.deobf("org.moddingx:LibX:${mod.libx_version}")
+    implementation fg.deobf("io.redspace.ironsspellbooks:irons_spellbooks:${mod.irons_spells_version}")
 }

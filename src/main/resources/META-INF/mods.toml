@@ -6,7 +6,7 @@ license="Apache License 2.0"
 modId="travelanchors"
 version="${version}"
 displayName="Travel Anchors"
-displayURL="https://github.com/Th-Underscore/travel_anchors"
+displayURL="https://www.curseforge.com/minecraft/mc-mods/travel-anchors-forge"
 credits="MelanX, noeppi_noeppi"
 authors="Th-Underscore, CastCrafter"
 description='''
@@ -30,6 +30,13 @@ Adds a staff of travelling and a travel anchor to teleport around the world.
 [[dependencies.travelanchors]]
     modId="libx"
     mandatory=true
-    versionRange="[1.20.1-5.0.12,)"
+    versionRange="[${libx_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.travelanchors]]
+    modId="irons_spellbooks"
+    mandatory=false
+    versionRange="[${irons_spells_version},)"
     ordering="NONE"
     side="BOTH"
