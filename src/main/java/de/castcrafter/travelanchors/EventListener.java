@@ -40,8 +40,7 @@ public class EventListener {
         if (TeleportHandler.canPlayerTeleport(player, event.getHand()) && !event.getItemStack().isEmpty()) {
             if (player.isShiftKeyDown() && TeleportHandler.canItemTeleport(player, event.getHand())) {
                 if (level.isClientSide) {
-                    boolean invertVelocity = Keybinds.INVERT_VELOCITY_KEY.isDown();
-                    if (TeleportHandler.shortTeleport(level, player, event.getHand(), invertVelocity)) {
+                    if (TeleportHandler.tryShortTeleport(level, player, event.getHand())) {
                         event.setCanceled(true);
                         event.setCancellationResult(InteractionResult.sidedSuccess(true));
                         player.getCooldowns().addCooldown(event.getItemStack().getItem(), CommonConfig.short_tp_cooldown);

@@ -3,7 +3,9 @@ package de.castcrafter.travelanchors;
 import de.castcrafter.travelanchors.config.CommonConfig;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +22,7 @@ public class ManaIntegration {
     private static Method sendToPlayerMethod = null;
     private static java.lang.reflect.Constructor<?> clientboundSyncManaConstructor = null;
     private static Class<?> magicDataClass = null; // Store class for constructor
+    private static Method getClientManaMethod = null;
 
     static {
         if (ModList.get().isLoaded(ISS_MOD_ID)) {
@@ -38,6 +41,15 @@ public class ManaIntegration {
                 Class<?> clientboundSyncManaClass = Class.forName("io.redspace.ironsspellbooks.network.ClientboundSyncMana");
                 clientboundSyncManaConstructor = clientboundSyncManaClass.getConstructor(magicDataClass);
 
+                if (FMLEnvironment.dist == Dist.CLIENT) {
+                    try {
+                        Class<?> clientMagicDataClass = Class.forName("io.redspace.ironsspellbooks.player.ClientMagicData");
+                        getClientManaMethod = clientMagicDataClass.getMethod("getPlayerMana");
+                    } catch (ClassNotFoundException | NoSuchMethodException e) {
+                        LOGGER.error("Failed to initialize client-side mana check for Iron's Spells 'n Spellbooks.", e);
+                    }
+                }
+
                 isIssLoaded = true;
                 LOGGER.info("Iron's Spells 'n Spellbooks found. Mana cost for short teleports will be enabled if configured.");
             } catch (ClassNotFoundException | NoSuchMethodException e) {
@@ -54,8 +66,8 @@ public class ManaIntegration {
     }
 
     public static boolean hasEnoughMana(Player player, int cost) {
-        if (!isIssLoaded || getPlayerMagicDataMethod == null || getManaMethod == null || !(player instanceof ServerPlayer)) {
-            return true; // If mod not loaded or methods not found, or not a server player, assume enough mana (or feature is off)
+        if (!isIssLoaded || getPlayerMagicDataMethod == null || getManaMethod == null) {
+            return true; // If mod not loaded or methods not found, assume enough mana (or feature is off)
         }
         try {
             Object magicData = getPlayerMagicDataMethod.invoke(null, player);
@@ -97,9 +109,8 @@ public class ManaIntegration {
             return true; // Mana cost not enabled or mod not loaded
         }
         if (!(player instanceof ServerPlayer)) {
-             // Mana logic is server-side
-            return true;
-        }
+           return true;
+       }
         return hasEnoughMana(player, CommonConfig.short_tp_mana_cost_amount);
     }
 
@@ -107,5 +118,18 @@ public class ManaIntegration {
         if (CommonConfig.short_tp_mana_cost_enabled && isModLoaded() && player instanceof ServerPlayer) {
             consumeMana(player, CommonConfig.short_tp_mana_cost_amount);
         }
+    }
+
+    public static boolean clientHasEnoughMana() {
+        if (!CommonConfig.short_tp_mana_cost_enabled || !isModLoaded()) {
+            return true;
+        }
+        try {
+            int currentMana = (int) getClientManaMethod.invoke(null);
+            return currentMana >= CommonConfig.short_tp_mana_cost_amount;
+        } catch (Exception e) {
+            LOGGER.error("Error checking client-side mana: {}", e.getMessage());
+        }
+        return false;
     }
 }

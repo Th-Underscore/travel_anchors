@@ -12,6 +12,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemCooldowns;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.BlockGetter;
@@ -21,12 +22,17 @@ import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityTeleportEvent;
+
 import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.util.Optional;
 
 public class TeleportHandler {
+
+    public static final Logger LOGGER = LoggerFactory.getLogger(TeleportHandler.class);
 
     public static boolean anchorTeleport(Level level, Player player, @Nullable BlockPos except, @Nullable InteractionHand hand) {
         Pair<BlockPos, String> anchor = getAnchorToTeleport(level, player, except);
@@ -105,22 +111,37 @@ public class TeleportHandler {
 
     public static boolean tryShortTeleport(Level level, Player player, @Nullable InteractionHand usedHand) {
         if (!level.isClientSide) {
-            TravelAnchors.logger.warn("tryShortTeleport called on server side. This should not happen. Packet should be used.");
             return false;
         }
         
         InteractionHand hand;
         if (usedHand == null) {
-            hand = player.getItemInHand(InteractionHand.MAIN_HAND).isEmpty() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+            if (canItemTeleport(player, InteractionHand.MAIN_HAND)) {
+                hand = InteractionHand.MAIN_HAND;
+            } else if (canItemTeleport(player, InteractionHand.OFF_HAND)) {
+                hand = InteractionHand.OFF_HAND;
+            } else {
+                return false;
+            }
         } else {
+            if (!canItemTeleport(player, usedHand)) {
+                return false;
+            }
             hand = usedHand;
         }
-        ItemStack itemStack = player.getItemInHand(hand);
-        if (TeleportHandler.canPlayerTeleport(player, hand)) {
-            if (TeleportHandler.canItemTeleport(player, hand) && !player.getCooldowns().isOnCooldown(itemStack.getItem())) {
+        
+        if (canPlayerTeleport(player, hand)) {
+            if (!ManaIntegration.clientHasEnoughMana()) {
+                player.displayClientMessage(Component.translatable("travelanchors.tp.no_mana"), true);
+                return false;
+            }
+            
+            ItemStack itemStack = player.getItemInHand(hand);
+            ItemCooldowns cooldowns = player.getCooldowns();
+            if (!cooldowns.isOnCooldown(itemStack.getItem())) {
                 boolean invertVelocity = Keybinds.INVERT_VELOCITY_KEY.isDown();
-                if (TeleportHandler.shortTeleport(level, player, hand, invertVelocity)) {
-                    player.getCooldowns().addCooldown(itemStack.getItem(), CommonConfig.short_tp_cooldown);
+                if (shortTeleport(level, player, hand, invertVelocity)) {
+                    cooldowns.addCooldown(itemStack.getItem(), CommonConfig.short_tp_cooldown);
                     return true;
                 }
             }
@@ -131,7 +152,7 @@ public class TeleportHandler {
     
     public static boolean shortTeleport(Level level, Player player, InteractionHand hand, boolean invertVelocity) {
         if (!level.isClientSide) {
-            TravelAnchors.logger.warn("shortTeleport called on server side. This should not happen. Packet should be used.");
+            LOGGER.warn("shortTeleport called on server side. This should not happen. Packet should be used.");
             return false;
         }
 
@@ -140,48 +161,8 @@ public class TeleportHandler {
             clientShouldKeepVelocity = !clientShouldKeepVelocity;
         }
 
-        Vec3 lookVec = player.getLookAngle();
-        Vec3 playerPos = player.position();
-        Vec3 targetSpot = null;
-
-        // NOTE: Determine if player is targeting a nearby block to teleport through
-        boolean teleportThroughBlock = false;
-        Vec3 eyePos = player.getEyePosition();
-        for (double rayDist = 0.5; rayDist <= MIN_TELEPORT_DISTANCE; rayDist += 0.5) { // Player is looking at a solid block within MIN_TELEPORT_DISTANCE
-            Vec3 currentRayPos = eyePos.add(lookVec.scale(rayDist));
-            BlockPos blockAtRay = BlockPos.containing(currentRayPos);
-            BlockState stateAtRay = level.getBlockState(blockAtRay);
-            if (level.isLoaded(blockAtRay) && !isBlockPassable(stateAtRay, level, blockAtRay)) {
-                teleportThroughBlock = true;
-                break;
-            }
-        }
-
-        if (teleportThroughBlock) {
-            // NOTE: Player is targeting a nearby block. Iterate forwards from MIN_TELEPORT_DISTANCE
-            // to find the first valid spot *after* this block.
-            for (double currentDistance = MIN_TELEPORT_DISTANCE; currentDistance <= CommonConfig.max_short_tp_distance; currentDistance += TELEPORT_STEP_BACK) {
-                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
-                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
-                if (potentialSpot != null) {
-                    targetSpot = potentialSpot;
-                    break; 
-                }
-            }
-        } else {
-            // NOTE: No specific nearby block targeted for "teleport through", or target is too far/not solid.
-            // Use original backwards iteration to find the furthest valid spot.
-            for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
-                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
-                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
-                if (potentialSpot != null) {
-                    targetSpot = potentialSpot;
-                    break;
-                }
-            }
-        }
-
-        if (targetSpot != null) {
+        Vec3 finalTeleportVec = findTeleportSpot(player, level);
+        if (finalTeleportVec != null) {
             TravelAnchors.getNetwork().sendShortTeleportRequest(level, hand, clientShouldKeepVelocity);
             player.swing(hand, true);
             player.playNotifySound(SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1F, 1F);
@@ -203,46 +184,11 @@ public class TeleportHandler {
             }
         }
 
-        if (!TeleportHandler.canPlayerTeleport(player, hand) || !TeleportHandler.canItemTeleport(player, hand) || player.getCooldowns().isOnCooldown(player.getItemInHand(hand).getItem())) {
+        if (!canPlayerTeleport(player, hand) || !canItemTeleport(player, hand) || player.getCooldowns().isOnCooldown(player.getItemInHand(hand).getItem())) {
             return false;
         }
 
-        Vec3 lookVec = player.getLookAngle();
-        Vec3 playerPos = player.position(); // Player's feet position
-        Vec3 finalTeleportVec = null;
-
-        boolean teleportThroughBlock = false;
-        Vec3 eyePos = player.getEyePosition();
-        for (double rayDist = 0.5; rayDist <= MIN_TELEPORT_DISTANCE; rayDist += 0.5) { // Player is looking at a solid block within MIN_TELEPORT_DISTANCE
-            Vec3 currentRayPos = eyePos.add(lookVec.scale(rayDist));
-            BlockPos blockAtRay = BlockPos.containing(currentRayPos);
-            BlockState stateAtRay = level.getBlockState(blockAtRay);
-            if (level.isLoaded(blockAtRay) && !isBlockPassable(stateAtRay, level, blockAtRay)) {
-                teleportThroughBlock = true;
-                break;
-            }
-        }
-
-        if (teleportThroughBlock) {
-            for (double currentDistance = MIN_TELEPORT_DISTANCE; currentDistance <= CommonConfig.max_short_tp_distance; currentDistance += TELEPORT_STEP_BACK) {
-                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
-                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
-                if (potentialSpot != null) {
-                    finalTeleportVec = potentialSpot;
-                    break;
-                }
-            }
-        } else {
-            for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
-                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
-                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
-                if (potentialSpot != null) {
-                    finalTeleportVec = potentialSpot;
-                    break;
-                }
-            }
-        }
-
+        Vec3 finalTeleportVec = findTeleportSpot(player, level);
         if (finalTeleportVec != null) {
             Vec3 velocityBefore = player.getDeltaMovement();
             Vec3 oldVelocityToRestore = velocityBefore;
@@ -268,6 +214,51 @@ public class TeleportHandler {
             player.displayClientMessage(Component.translatable("travelanchors.hop.fail"), true);
             return false;
         }
+    }
+
+    @Nullable
+    private static Vec3 findTeleportSpot(Player player, Level level) {
+        Vec3 lookVec = player.getLookAngle();
+        Vec3 playerPos = player.position(); // Player's feet position
+        Vec3 finalTeleportVec = null;
+
+        boolean teleportThroughBlock = false;
+        Vec3 eyePos = player.getEyePosition();
+        for (double rayDist = 0.5; rayDist <= MIN_TELEPORT_DISTANCE; rayDist += 0.5) { // Player is looking at a solid block within MIN_TELEPORT_DISTANCE
+            Vec3 currentRayPos = eyePos.add(lookVec.scale(rayDist));
+            BlockPos blockAtRay = BlockPos.containing(currentRayPos);
+            BlockState stateAtRay = level.getBlockState(blockAtRay);
+            if (level.isLoaded(blockAtRay) && !isBlockPassable(stateAtRay, level, blockAtRay)) {
+                teleportThroughBlock = true;
+                break;
+            }
+        }
+
+        if (teleportThroughBlock) {
+            // Player is targeting a nearby block. Iterate forwards from MIN_TELEPORT_DISTANCE
+            // to find the first valid spot *after* this block.
+            for (double currentDistance = MIN_TELEPORT_DISTANCE; currentDistance <= CommonConfig.max_short_tp_distance; currentDistance += TELEPORT_STEP_BACK) {
+                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+                if (potentialSpot != null) {
+                    finalTeleportVec = potentialSpot;
+                    break;
+                }
+            }
+        } else {
+            // No specific nearby block targeted for "teleport through", or target is too far/not solid.
+            // Use original backwards iteration to find the furthest valid spot.
+            for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
+                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+                if (potentialSpot != null) {
+                    finalTeleportVec = potentialSpot;
+                    break;
+                }
+            }
+        }
+        
+        return finalTeleportVec;
     }
     
     @Nullable
@@ -392,8 +383,9 @@ public class TeleportHandler {
     }
 
     public static boolean canItemTeleport(Player player, InteractionHand hand) {
-        return player.getItemInHand(hand).getItem() == ModItems.travelStaff
-                || player.getItemInHand(hand).getEnchantmentLevel(ModEnchantments.teleportation) >= 1;
+        ItemStack itemStack = player.getItemInHand(hand);
+        return itemStack.getItem() == ModItems.travelStaff
+                || itemStack.getEnchantmentLevel(ModEnchantments.teleportation) >= 1;
     }
 
     private static double getAngleRadians(Vec3 positionVec, BlockPos anchor, float yRot, float xRot) {
