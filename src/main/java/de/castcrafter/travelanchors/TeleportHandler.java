@@ -119,7 +119,7 @@ public class TeleportHandler {
             if (TeleportHandler.canItemTeleport(player, hand) && !player.getCooldowns().isOnCooldown(itemStack.getItem())) {
                 boolean invertVelocity = Keybinds.INVERT_VELOCITY_KEY.isDown();
                 if (TeleportHandler.shortTeleport(level, player, hand, invertVelocity)) {
-                    player.getCooldowns().addCooldown(itemStack.getItem(), 30);
+                    player.getCooldowns().addCooldown(itemStack.getItem(), CommonConfig.short_tp_cooldown);
                     return true;
                 }
             }
@@ -301,22 +301,22 @@ public class TeleportHandler {
         
         Vec3 currentAdjustedPos = new Vec3(snappedX, candidateFeetPos.y, snappedZ);
 
-        // Step 3: Y-axis Snapping
-        // Check if the block right above the current x/z snapped position is a valid spot.
-        // If so, move the teleport spot to the block above.
-        BlockPos blockUnderPotentialUpperPos = BlockPos.containing(currentAdjustedPos.x(), currentAdjustedPos.y(), currentAdjustedPos.z());
-        if (canTeleportTo(level, blockUnderPotentialUpperPos)) {
-            currentAdjustedPos = new Vec3(currentAdjustedPos.x(), currentAdjustedPos.y() + 1, currentAdjustedPos.z());
-        }
-
-        // Step 4: Final Standable & Collision Check for the (potentially Y-snapped) currentAdjustedPos
+        // Step 3: Final Standable & Collision Check for the currentAdjustedPos
         if (currentAdjustedPos.y < level.getMinBuildHeight() + 1) {
             return null;
         }
 
         BlockPos finalBlockBelowFeet = BlockPos.containing(currentAdjustedPos.x, currentAdjustedPos.y - 0.01, currentAdjustedPos.z);
         if (!canTeleportTo(level, finalBlockBelowFeet)) { // Checks for solid ground below final pos and clear head/body space above it
-            return null;
+            // Step 4: Y-axis Snapping
+            // Check if the block right above the final x/z snapped position is a valid spot.
+            // If so, move the teleport spot to the block above.
+            BlockPos blockUnderUpperPos = BlockPos.containing(currentAdjustedPos.x(), currentAdjustedPos.y(), currentAdjustedPos.z());
+            if (canTeleportTo(level, blockUnderUpperPos)) {
+                currentAdjustedPos = new Vec3(currentAdjustedPos.x(), currentAdjustedPos.y() + 1, currentAdjustedPos.z());
+            } else {
+                return null;
+            }
         }
         
         // Final AABB collision check at the (potentially X/Z/Y snapped) position

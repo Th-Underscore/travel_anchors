@@ -1,7 +1,7 @@
 package de.castcrafter.travelanchors;
 
 import de.castcrafter.travelanchors.TravelAnchors;
-
+import de.castcrafter.travelanchors.config.CommonConfig;
 import de.castcrafter.travelanchors.config.ClientConfig;
 import de.castcrafter.travelanchors.network.ClientEventMessage;
 import de.castcrafter.travelanchors.network.ShortTeleportPacket;
@@ -47,7 +47,7 @@ public class EventListener {
                     if (TeleportHandler.shortTeleport(level, player, event.getHand(), invertVelocity)) {
                         event.setCanceled(true);
                         event.setCancellationResult(InteractionResult.sidedSuccess(true));
-                        player.getCooldowns().addCooldown(event.getItemStack().getItem(), 30);
+                        player.getCooldowns().addCooldown(event.getItemStack().getItem(), CommonConfig.short_tp_cooldown);
                     }
                 }
             } else {

@@ -24,4 +24,8 @@ public class CommonConfig {
             "This allows other mods to prevent the teleport or change the destination."
     })
     public static boolean fireTeleportEvent = true;
+
+    @Config("The cooldown in ticks for short-range teleports (shift-click). 20 ticks = 1 second.")
+    @org.moddingx.libx.config.validate.IntRange(min = 0)
+    public static int short_tp_cooldown = 30;
 }
