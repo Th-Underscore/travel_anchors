@@ -38,7 +38,6 @@ public record ShortTeleportPacket(InteractionHand hand, boolean keepVelocity) {
 
         @Override
         public boolean handle(ShortTeleportPacket msg, Supplier<NetworkEvent.Context> ctx) {
-            de.castcrafter.travelanchors.TravelAnchors.logger.info("ShortTeleportPacket.Handler: Received packet. Hand: " + msg.hand() + ", KeepVelocity: " + msg.keepVelocity());
             ServerPlayer player = ctx.get().getSender();
             if (player == null) {
                 return true;

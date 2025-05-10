@@ -16,6 +16,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityTeleportEvent;
@@ -97,13 +98,22 @@ public class TeleportHandler {
     private static final double MIN_TELEPORT_DISTANCE = 2.0;
     private static final double TELEPORT_STEP_BACK = 0.5;
 
-    public static boolean requestShortTeleport(Level level, Player player) {
+    public static boolean tryShortTeleport(Level level, Player player) {
+        return tryShortTeleport(level, player, null);
+    }
+
+    public static boolean tryShortTeleport(Level level, Player player, @Nullable InteractionHand usedHand) {
         if (!level.isClientSide) {
-            TravelAnchors.logger.warn("requestShortTeleport called on server side. This should not happen. Packet should be used.");
+            TravelAnchors.logger.warn("tryShortTeleport called on server side. This should not happen. Packet should be used.");
             return false;
         }
-
-        InteractionHand hand = player.getItemInHand(InteractionHand.MAIN_HAND).isEmpty() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        
+        InteractionHand hand;
+        if (usedHand == null) {
+            hand = player.getItemInHand(InteractionHand.MAIN_HAND).isEmpty() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        } else {
+            hand = usedHand;
+        }
         ItemStack itemStack = player.getItemInHand(hand);
         if (TeleportHandler.canPlayerTeleport(player, hand)) {
             if (TeleportHandler.canItemTeleport(player, hand) && !player.getCooldowns().isOnCooldown(itemStack.getItem())) {
@@ -132,12 +142,41 @@ public class TeleportHandler {
         Vec3 lookVec = player.getLookAngle();
         Vec3 playerPos = player.position();
         Vec3 targetSpot = null;
-        for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
-            Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
-            Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
-            if (potentialSpot != null) {
-                targetSpot = potentialSpot;
+
+        // NOTE: Determine if player is targeting a nearby block to teleport through
+        boolean teleportThroughBlock = false;
+        Vec3 eyePos = player.getEyePosition();
+        for (double rayDist = 0.5; rayDist <= MIN_TELEPORT_DISTANCE; rayDist += 0.5) { // Player is looking at a solid block within MIN_TELEPORT_DISTANCE
+            Vec3 currentRayPos = eyePos.add(lookVec.scale(rayDist));
+            BlockPos blockAtRay = BlockPos.containing(currentRayPos);
+            BlockState stateAtRay = level.getBlockState(blockAtRay);
+            if (level.isLoaded(blockAtRay) && !isBlockPassable(stateAtRay, level, blockAtRay)) {
+                teleportThroughBlock = true;
                 break;
+            }
+        }
+
+        if (teleportThroughBlock) {
+            // NOTE: Player is targeting a nearby block. Iterate forwards from MIN_TELEPORT_DISTANCE
+            // to find the first valid spot *after* this block.
+            for (double currentDistance = MIN_TELEPORT_DISTANCE; currentDistance <= CommonConfig.max_short_tp_distance; currentDistance += TELEPORT_STEP_BACK) {
+                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+                if (potentialSpot != null) {
+                    targetSpot = potentialSpot;
+                    break; 
+                }
+            }
+        } else {
+            // NOTE: No specific nearby block targeted for "teleport through", or target is too far/not solid.
+            // Use original backwards iteration to find the furthest valid spot.
+            for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
+                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+                if (potentialSpot != null) {
+                    targetSpot = potentialSpot;
+                    break;
+                }
             }
         }
 
@@ -156,17 +195,43 @@ public class TeleportHandler {
             return false;
         }
 
+        if (!TeleportHandler.canPlayerTeleport(player, hand) || !TeleportHandler.canItemTeleport(player, hand) || player.getCooldowns().isOnCooldown(player.getItemInHand(hand).getItem())) {
+            return false;
+        }
+
         Vec3 lookVec = player.getLookAngle();
         Vec3 playerPos = player.position(); // Player's feet position
-
         Vec3 finalTeleportVec = null;
 
-        for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
-            Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
-            Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
-            if (potentialSpot != null) {
-                finalTeleportVec = potentialSpot;
-                break; // Found a valid spot
+        boolean teleportThroughBlock = false;
+        Vec3 eyePos = player.getEyePosition();
+        for (double rayDist = 0.5; rayDist <= MIN_TELEPORT_DISTANCE; rayDist += 0.5) { // Player is looking at a solid block within MIN_TELEPORT_DISTANCE
+            Vec3 currentRayPos = eyePos.add(lookVec.scale(rayDist));
+            BlockPos blockAtRay = BlockPos.containing(currentRayPos);
+            BlockState stateAtRay = level.getBlockState(blockAtRay);
+            if (level.isLoaded(blockAtRay) && !isBlockPassable(stateAtRay, level, blockAtRay)) {
+                teleportThroughBlock = true;
+                break;
+            }
+        }
+
+        if (teleportThroughBlock) {
+            for (double currentDistance = MIN_TELEPORT_DISTANCE; currentDistance <= CommonConfig.max_short_tp_distance; currentDistance += TELEPORT_STEP_BACK) {
+                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+                if (potentialSpot != null) {
+                    finalTeleportVec = potentialSpot;
+                    break;
+                }
+            }
+        } else {
+            for (double currentDistance = CommonConfig.max_short_tp_distance; currentDistance >= MIN_TELEPORT_DISTANCE; currentDistance -= TELEPORT_STEP_BACK) {
+                Vec3 candidateFeetPos = playerPos.add(lookVec.scale(currentDistance));
+                Vec3 potentialSpot = getValidTeleportSpotForCandidate(level, player, candidateFeetPos);
+                if (potentialSpot != null) {
+                    finalTeleportVec = potentialSpot;
+                    break;
+                }
             }
         }
 
@@ -199,15 +264,17 @@ public class TeleportHandler {
         double playerWidth = player.getBbWidth();
 
         // Step 1: Check if player can occupy the candidateFeetPos (feet and head space are non-solid)
-        BlockPos feetBlockPos = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y, candidateFeetPos.z);
-        BlockPos headBlockPos = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y + playerHeight - 0.01, candidateFeetPos.z); // Check just below top of BB
+        // This ensures that if the direct line of sight lands inside a block, it's considered invalid,
+        // allowing the forward-iterating loop in shortTeleport to find a spot *after* the obstruction.
+        BlockPos initialFeetBlockPos = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y, candidateFeetPos.z);
+        BlockPos initialHeadBlockPos = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y + playerHeight - 0.01, candidateFeetPos.z); // Check just below top of BB
 
-        BlockState feetBlockState = level.getBlockState(feetBlockPos);
-        BlockState headBlockState = level.getBlockState(headBlockPos);
+        BlockState initialFeetBlockState = level.getBlockState(initialFeetBlockPos);
+        BlockState initialHeadBlockState = level.getBlockState(initialHeadBlockPos);
 
         // Player must be in air or fluid at feet and head level
-        if (!feetBlockState.getCollisionShape(level, feetBlockPos).isEmpty() || !headBlockState.getCollisionShape(level, headBlockPos).isEmpty()) {
-            return null; // Cannot occupy this space directly
+        if (!isBlockPassable(initialFeetBlockState, level, initialFeetBlockPos) || !isBlockPassable(initialHeadBlockState, level, initialHeadBlockPos)) {
+            return null; // Candidate position itself is obstructed
         }
 
         // Step 2: Apply .5 Snapping for X/Z Axes (Wall Avoidance)
@@ -217,7 +284,7 @@ public class TeleportHandler {
         // X-axis snapping
         BlockPos xCheckBlock = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y + playerHeight / 2, candidateFeetPos.z);
         BlockState xCheckBlockState = level.getBlockState(xCheckBlock);
-        if (!xCheckBlockState.getCollisionShape(level, xCheckBlock).isEmpty()) { // If block at player's X-center is solid
+        if (!isBlockPassable(xCheckBlockState, level, xCheckBlock)) {
             if (candidateFeetPos.x >= xCheckBlock.getX() && candidateFeetPos.x < xCheckBlock.getX() + 1) {
                 snappedX = xCheckBlock.getX() + 0.5;
             }
@@ -226,7 +293,7 @@ public class TeleportHandler {
         // Z-axis snapping
         BlockPos zCheckBlock = BlockPos.containing(candidateFeetPos.x, candidateFeetPos.y + playerHeight / 2, candidateFeetPos.z);
         BlockState zCheckBlockState = level.getBlockState(zCheckBlock);
-        if (!zCheckBlockState.getCollisionShape(level, zCheckBlock).isEmpty()) { // If block at player's Z-center is solid
+        if (!isBlockPassable(zCheckBlockState, level, zCheckBlock)) {
             if (candidateFeetPos.z >= zCheckBlock.getZ() && candidateFeetPos.z < zCheckBlock.getZ() + 1) {
                 snappedZ = zCheckBlock.getZ() + 0.5;
             }
@@ -234,17 +301,25 @@ public class TeleportHandler {
         
         Vec3 currentAdjustedPos = new Vec3(snappedX, candidateFeetPos.y, snappedZ);
 
-        // Step 3: Final Standable & Collision Check
-        if (currentAdjustedPos.y < level.getMinBuildHeight() + 1) { // Need at least 1 block for ground + player height
+        // Step 3: Y-axis Snapping
+        // Check if the block right above the current x/z snapped position is a valid spot.
+        // If so, move the teleport spot to the block above.
+        BlockPos blockUnderPotentialUpperPos = BlockPos.containing(currentAdjustedPos.x(), currentAdjustedPos.y(), currentAdjustedPos.z());
+        if (canTeleportTo(level, blockUnderPotentialUpperPos)) {
+            currentAdjustedPos = new Vec3(currentAdjustedPos.x(), currentAdjustedPos.y() + 1, currentAdjustedPos.z());
+        }
+
+        // Step 4: Final Standable & Collision Check for the (potentially Y-snapped) currentAdjustedPos
+        if (currentAdjustedPos.y < level.getMinBuildHeight() + 1) {
             return null;
         }
 
-        BlockPos blockBelowFeet = BlockPos.containing(currentAdjustedPos.x, currentAdjustedPos.y - 0.01, currentAdjustedPos.z);
-        if (!canTeleportTo(level, blockBelowFeet)) { // Checks for solid ground and clear head/body space above it
+        BlockPos finalBlockBelowFeet = BlockPos.containing(currentAdjustedPos.x, currentAdjustedPos.y - 0.01, currentAdjustedPos.z);
+        if (!canTeleportTo(level, finalBlockBelowFeet)) { // Checks for solid ground below final pos and clear head/body space above it
             return null;
         }
         
-        // Final AABB collision check at the (potentially snapped) position
+        // Final AABB collision check at the (potentially X/Z/Y snapped) position
         net.minecraft.world.phys.AABB finalPlayerAABB = new net.minecraft.world.phys.AABB(
             currentAdjustedPos.x - playerWidth / 2, currentAdjustedPos.y, currentAdjustedPos.z - playerWidth / 2,
             currentAdjustedPos.x + playerWidth / 2, currentAdjustedPos.y + playerHeight, currentAdjustedPos.z + playerWidth / 2
@@ -254,7 +329,7 @@ public class TeleportHandler {
             return null;
         }
 
-        // Step 4: Event Firing
+        // Step 5: Event Firing
         if (CommonConfig.fireTeleportEvent) {
             EntityTeleportEvent event = new EntityTeleportEvent(player, currentAdjustedPos.x, currentAdjustedPos.y, currentAdjustedPos.z);
             if (MinecraftForge.EVENT_BUS.post(event)) {
@@ -265,10 +340,29 @@ public class TeleportHandler {
             return currentAdjustedPos;
         }
     }
+
+    // NOTE: New method to check if a block is passable for teleportation raycast
+    private static boolean isBlockPassable(BlockState blockState, BlockGetter world, BlockPos pos) {
+        // 1. Fluids, grass, flowers, air (these have an empty collision shape)
+        if (blockState.getCollisionShape(world, pos).isEmpty()) {
+            return true;
+        }
+        // 2. Ladders
+        if (blockState.getBlock() instanceof LadderBlock) {
+            return true;
+        }
+        // 3. Other blocks player can be inside (e.g., vines, cobwebs)
+        //    Could add more specific checks here if needed, e.g., using BlockTags.CLIMBABLE
+        //    or checking for specific block instances like CobwebBlock.
+        //    For now, isEmpty and LadderBlock cover common cases.
+        return false;
+    }
     
     public static boolean canTeleportTo(BlockGetter level, BlockPos target) {
-        return !level.getBlockState(target.immutable().above(1)).canOcclude()
-                && !level.getBlockState(target.immutable().above(2)).canOcclude()
+        BlockPos posAbove1 = target.immutable().above(1);
+        BlockPos posAbove2 = target.immutable().above(2);
+        return isBlockPassable(level.getBlockState(posAbove1), level, posAbove1)
+                && isBlockPassable(level.getBlockState(posAbove2), level, posAbove2)
                 && target.getY() >= level.getMinBuildHeight();
     }
 

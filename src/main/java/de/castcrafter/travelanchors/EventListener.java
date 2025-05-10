@@ -122,7 +122,7 @@ public class EventListener {
         if (event.getAction() == GLFW.GLFW_PRESS) {
             if (Keybinds.SHORT_TELEPORT_KEY.isDown()) {
                 Level level = player.getCommandSenderWorld();
-                if (TeleportHandler.requestShortTeleport(level, player)) {
+                if (TeleportHandler.tryShortTeleport(level, player)) {
                     // event.setCanceled(true);
                 }
             }
@@ -140,7 +140,7 @@ public class EventListener {
         if (event.getAction() == GLFW.GLFW_PRESS) {
             if (Keybinds.SHORT_TELEPORT_KEY.isDown()) {
                 Level level = player.getCommandSenderWorld();
-                if (TeleportHandler.requestShortTeleport(level, player)) {
+                if (TeleportHandler.tryShortTeleport(level, player)) {
                     // event.setCanceled(true);
                 }
             }
