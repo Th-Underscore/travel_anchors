@@ -44,7 +44,7 @@ public class TeleportHandler {
             Vec3 positionVec = player.position().add(0, player.getEyeHeight(), 0);
             Optional<Pair<BlockPos, String>> anchor = TravelAnchorList.get(level).getAnchorsAround(player.position(), Math.pow(maxDistance, 2))
                     .filter(pair -> except == null || !except.equals(pair.getLeft()))
-                    .filter(p -> Math.abs(getAngleRadians(positionVec, p.getLeft(), player.getYRot(), player.getXRot())) <= Math.toRadians(ServerConfig.MAX_ANGLE.get()))
+                    .filter(p -> Math.abs(getAngleRadians(positionVec, p.getLeft(), player.getYRot(), player.getXRot())) <= Math.toRadians(ClientConfig.MAX_ANGLE.get()))
                     .min((p1, p2) -> {
                         double angle1 = getAngleRadians(positionVec, p1.getLeft(), player.getYRot(), player.getXRot());
                         double angle2 = getAngleRadians(positionVec, p2.getLeft(), player.getYRot(), player.getXRot());

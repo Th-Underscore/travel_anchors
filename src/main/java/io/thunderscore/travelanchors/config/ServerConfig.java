@@ -7,7 +7,6 @@ public class ServerConfig {
     public static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
     public static final ForgeConfigSpec SPEC;
 
-    public static final ForgeConfigSpec.DoubleValue MAX_ANGLE;
     public static final ForgeConfigSpec.DoubleValue MAX_DISTANCE;
     public static final ForgeConfigSpec.DoubleValue MAX_SHORT_TP_DISTANCE;
     public static final ForgeConfigSpec.BooleanValue FIRE_TELEPORT_EVENT;
@@ -18,10 +17,6 @@ public class ServerConfig {
     static {
         BUILDER.comment("Travel Anchors Server Configuration"); // Updated comment
         BUILDER.push("general");
-
-        MAX_ANGLE = BUILDER
-                .comment("The maximum angle you can look at the Travel Anchor to teleport.")
-                .defineInRange("max_angle", 30.0, 1.0, 180.0); // Assuming a max of 180 degrees
 
         MAX_DISTANCE = BUILDER
                 .comment("The maximum distance you are allowed to teleport.")
