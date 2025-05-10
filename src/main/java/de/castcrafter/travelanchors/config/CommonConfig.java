@@ -28,4 +28,14 @@ public class CommonConfig {
     @Config("The cooldown in ticks for short-range teleports (shift-click). 20 ticks = 1 second.")
     @org.moddingx.libx.config.validate.IntRange(min = 0)
     public static int short_tp_cooldown = 30;
+
+    @Config({
+            "Enable mana cost for short-range teleports when 'Iron's Spells 'n Spellbooks' is installed.",
+            "This requires 'Iron's Spells 'n Spellbooks' to be present."
+    })
+    public static boolean short_tp_mana_cost_enabled = true;
+
+    @Config("The amount of mana to consume for a short-range teleport if mana cost is enabled.")
+    @org.moddingx.libx.config.validate.IntRange(min = 0)
+    public static int short_tp_mana_cost_amount = 25;
 }

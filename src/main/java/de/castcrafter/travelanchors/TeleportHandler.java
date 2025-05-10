@@ -13,6 +13,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -195,6 +196,13 @@ public class TeleportHandler {
             return false;
         }
 
+        if (player instanceof ServerPlayer) {
+            if (!ManaIntegration.canTeleportWithMana(player)) {
+                player.displayClientMessage(Component.translatable("travelanchors.tp.no_mana"), true);
+                return false;
+            }
+        }
+
         if (!TeleportHandler.canPlayerTeleport(player, hand) || !TeleportHandler.canItemTeleport(player, hand) || player.getCooldowns().isOnCooldown(player.getItemInHand(hand).getItem())) {
             return false;
         }
@@ -241,6 +249,10 @@ public class TeleportHandler {
             
             player.teleportTo(finalTeleportVec.x(), finalTeleportVec.y(), finalTeleportVec.z());
             player.fallDistance = 0;
+
+            if (player instanceof ServerPlayer) {
+                ManaIntegration.tryConsumeMana(player);
+            }
 
             if (player.getServer() != null) {
                 final Vec3 finalOldVelocityToRestore = oldVelocityToRestore;

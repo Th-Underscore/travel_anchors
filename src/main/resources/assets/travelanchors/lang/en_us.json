@@ -19,6 +19,7 @@
 
   "travelanchors.tp.success": "Teleported to %s.",
   "travelanchors.tp.fail": "No travel anchor found.",
+  "travelanchors.tp.no_mana": "Not enough mana to teleport.",
   "travelanchors.hop.fail": "Destination obstructed.",
   
   "travelanchors.lock.button": "Lock",
