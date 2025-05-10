@@ -4,7 +4,7 @@ license="Apache License 2.0"
 
 [[mods]]
 modId="travelanchors"
-version="${version}"
+version="1.0.0+1.20.1"
 displayName="Travel Anchors"
 displayURL="https://github.com/Th-Underscore/travel_anchors"
 credits="MelanX, noeppi_noeppi"

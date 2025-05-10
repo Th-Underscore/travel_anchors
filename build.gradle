@@ -4,6 +4,9 @@ buildscript {
 
 apply from: 'https://moddingx.github.io/ModUtils/v5/mod.gradle'
 
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
 repositories {
     maven { url = 'https://maven.melanx.de/' }
 }
@@ -12,4 +15,14 @@ dependencies {
     annotationProcessor fg.deobf("org.moddingx:LibX:1.20.1-5.0.12")
 
     implementation fg.deobf("org.moddingx:LibX:1.20.1-5.0.12")
+}
+
+// Read version from mods.toml
+String modsTomlContent = file("src/main/resources/META-INF/mods.toml").getText("UTF-8")
+Matcher matcher = Pattern.compile('(?m)^\s*modId\s*=\s*"travelanchors"\s*(\r?\n)^\s*version\s*=\s*"([^"]+)"').matcher(modsTomlContent)
+
+if (matcher.find()) {
+    project.version = matcher.group(2)
+} else {
+    throw new GradleException("Could not find version for modId 'travelanchors' in src/main/resources/META-INF/mods.toml matching the expected format.")
 }
