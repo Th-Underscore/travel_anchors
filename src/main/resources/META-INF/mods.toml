@@ -7,8 +7,8 @@ modId="travelanchors"
 version="${version}"
 displayName="Travel Anchors"
 displayURL="https://www.curseforge.com/minecraft/mc-mods/travel-anchors-forge"
-credits="MelanX, noeppi_noeppi"
-authors="Th-Underscore, CastCrafter"
+credits="CastCrafter, MelanX, noeppi_noeppi"
+authors="Th-Underscore"
 description='''
 Adds a staff of travelling and a travel anchor to teleport around the world.
 '''
@@ -16,7 +16,7 @@ Adds a staff of travelling and a travel anchor to teleport around the world.
 [[dependencies.travelanchors]]
     modId="forge"
     mandatory=true
-    versionRange="[47.0.3,)"
+    versionRange="[47.3.0,47.4.0]"
     ordering="NONE"
     side="BOTH"
 
